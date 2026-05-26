@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#060810">
 <title>SGCM — IDMóveis</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
 <style>
 /* ══════════════════════════════════════════
    SGCM IDMóveis — Dark Industrial SCADA UI
@@ -779,6 +779,7 @@ canvas { max-width:100% !important; }
 </head>
 <body>
 <script>
+
 
 
 
@@ -2388,7 +2389,7 @@ function closeModal(id){document.getElementById(id)?.classList.remove('on');}
 // DASHBOARD \u2014 KPIs integrados
 // ============================================================
 
-function renderDash(){
+function renderDash(){if(typeof Chart==='undefined'){setTimeout(renderDash,500);return;}
   // \u2500\u2500 Setor: dashboard espec\u00EDfico \u2500\u2500
   if(CU?.role==='setor'){renderDashSetor();return;}
   // \u2500\u2500 Mantenedor: dashboard espec\u00EDfico \u2500\u2500
@@ -7878,6 +7879,9 @@ function processarArquivoEquip(event){
   r.readAsText(file,'UTF-8');event.target.value='';
 }
 
+
+function waitForChart(fn,tries){tries=tries||0;if(typeof Chart!=='undefined'){fn();}else if(tries<20){setTimeout(function(){waitForChart(fn,tries+1);},300);}else{console.warn('[SGCM] Chart.js nao carregou');}}
+
 function toast(title,body,type='ex'){const w=document.getElementById('toasts');const t=document.createElement('div');t.className=`toast ${type}`;t.innerHTML=`<div class="t-tit">${title}</div>${body?`<div class="t-bod">${body}</div>`:''}`;w.appendChild(t);setTimeout(()=>t.remove(),4000);}
 
 // ============================================================
@@ -8360,7 +8364,7 @@ function renderAnalise(){
 // KPIs \u2014 GR\u00C1FICOS COMPLETOS
 // ============================================================
 
-function renderKPIs(){
+function renderKPIs(){if(typeof Chart==='undefined'){setTimeout(renderKPIs,500);return;}
   // KPIs cards removidos daqui \u2014 est\u00E3o no Dashboard
   // Esta tela foca em an\u00E1lise gr\u00E1fica profunda
 
@@ -8686,7 +8690,9 @@ function _ch(id, cfgFn, extraOpts, _retry){
 
 
 
+
 </script>
+
 
 
 
