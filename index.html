@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#060810">
 <title>SGCM — IDMóveis</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -780,152 +780,19 @@ canvas { max-width:100% !important; }
 <body>
 <script>
 
-// ════════════════════════════════════════════════════════
-// FIREBASE REST API — sem SDK, usa fetch() nativo
-// Funciona em qualquer celular sem depender de CDN externo
-// ════════════════════════════════════════════════════════
+// Firebase compat layer
+window.FB_ACTIVE=window.FB_ACTIVE||false;
+function fbCheckConexao(){if(typeof fbUpdateBadge==='function')fbUpdateBadge(window.FB_ACTIVE?'online':'offline');}
 
-var _FB_CFG = {
-  apiKey:      'AIzaSyC1IOdEKdQWwYs2TWHEweWU04VXtxJcPOo',
-  databaseURL: 'https://sgcm-idmoveis-default-rtdb.firebaseio.com',
-  projectId:   'sgcm-idmoveis'
-};
 
-var FB_BASE_URL = _FB_CFG.databaseURL + '/sgcm';
-window.FB_ACTIVE = false;
-window.FB_APP = null;
-window.FB_DB  = null;
 
-// Verifica conexão com o Firebase via REST
-function fbCheckConexao(){
-  fetch(FB_BASE_URL + '/.json?timeout=5s', {method:'GET'})
-    .then(function(r){
-      window.FB_ACTIVE = r.ok;
-      if(typeof fbUpdateBadge==='function') fbUpdateBadge(r.ok?'online':'offline');
-      if(r.ok && typeof fbPuxarDados==='function') fbPuxarDados();
-    })
-    .catch(function(){
-      window.FB_ACTIVE = false;
-      if(typeof fbUpdateBadge==='function') fbUpdateBadge('offline');
-    });
-}
-
-// Envia dados para o Firebase via REST PUT
-function fbEnviarDados(){
-  if(!navigator.onLine){ toast('Sem conexao com a internet','','dk'); return; }
-  var payload = JSON.stringify({
-    os:    OS    || [],
-    equip: EQUIP || [],
-    prev:  PREV  || [],
-    chk:   CHECKLISTS || [],
-    ts:    Date.now()
-  });
-  toast('Enviando dados...','','ag');
-  fetch(FB_BASE_URL + '.json?auth=' + _FB_CFG.apiKey, {
-    method:  'PUT',
-    headers: {'Content-Type':'application/json'},
-    body:    payload
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    if(d && d.error){ toast('Erro Firebase: '+d.error,'','dk'); return; }
-    window.FB_ACTIVE = true;
-    if(typeof fbUpdateBadge==='function') fbUpdateBadge('online');
-    toast('Dados salvos no Firebase','Sincronizado com sucesso','ok');
-    console.log('[SGCM] Dados enviados ao Firebase');
-  })
-  .catch(function(e){ toast('Erro ao enviar: '+e.message,'','dk'); });
-}
-
-// Baixa dados do Firebase via REST GET
-function fbPuxarDados(){
-  if(!navigator.onLine) return;
-  fetch(FB_BASE_URL + '.json?timeout=10s')
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    if(!d || d.error){ console.warn('[SGCM] fbPuxar:', d&&d.error); return; }
-    var mudou = false;
-    if(d.os    && Array.isArray(d.os)    && d.os.length    > 0){ OS=d.os;    try{localStorage.setItem(LSKEYS.os,JSON.stringify(OS));}catch(e){} mudou=true; }
-    if(d.equip && Array.isArray(d.equip) && d.equip.length > 0){ EQUIP=d.equip; try{localStorage.setItem(LSKEYS.eq,JSON.stringify(EQUIP));}catch(e){} mudou=true; }
-    if(d.prev  && Array.isArray(d.prev)  && d.prev.length  > 0){ PREV=d.prev;   try{localStorage.setItem(LSKEYS.pv,JSON.stringify(PREV));}catch(e){} mudou=true; }
-    if(mudou){
-      if(typeof updateDots==='function') updateDots();
-      if(typeof renderDash==='function') renderDash();
-      console.log('[SGCM] Dados sincronizados do Firebase');
-    }
-  })
-  .catch(function(e){ console.warn('[SGCM] fbPuxar erro:',e.message); });
-}
-
-// Ouve mudanças em tempo real via Server-Sent Events (EventSource)
-var _fbEventSource = null;
-function fbOuvirTempReal(){
-  if(_fbEventSource){ _fbEventSource.close(); }
-  try{
-    _fbEventSource = new EventSource(FB_BASE_URL + '/os.json');
-    _fbEventSource.addEventListener('put', function(e){
-      try{
-        var data = JSON.parse(e.data);
-        if(data && data.data && Array.isArray(data.data)){
-          OS = data.data;
-          try{localStorage.setItem(LSKEYS.os,JSON.stringify(OS));}catch(err){}
-          if(typeof updateDots==='function') updateDots();
-          if(typeof renderDash==='function'&&document.getElementById('page-dashboard')&&document.getElementById('page-dashboard').classList.contains('on')) renderDash();
-          console.log('[SGCM] OS atualizadas em tempo real');
-        }
-      }catch(err){}
-    });
-    _fbEventSource.onerror = function(){
-      window.FB_ACTIVE = false;
-      if(typeof fbUpdateBadge==='function') fbUpdateBadge('offline');
-      setTimeout(fbOuvirTempReal, 10000); // reconecta em 10s
-    };
-    window.FB_ACTIVE = true;
-    if(typeof fbUpdateBadge==='function') fbUpdateBadge('online');
-  }catch(e){
-    console.warn('[SGCM] EventSource nao suportado:', e.message);
-  }
-}
-
-// Sobrescreve a função save() original para também salvar no Firebase
-var _saveOriginal = null;
 function iniciarSyncFirebase(){
-  if(typeof save === 'function' && !_saveOriginal){
-    _saveOriginal = save;
-    save = function(){
-      _saveOriginal();
-      if(window.FB_ACTIVE) fbEnviarDados();
-    };
-    console.log('[SGCM] Save com sync Firebase ativo');
+  if(typeof save==='function'&&!window._sp){
+    var o=save;save=function(){o();if(window.FB_ACTIVE&&typeof window.fbEnviarDados==='function')window.fbEnviarDados();};
+    window._sp=true;console.log('[SGCM] Save com sync Firebase ativo');
   }
-  // Inicia escuta em tempo real
-  fbOuvirTempReal();
 }
-
-// Auto-inicia após o DOM carregar
-(function iniciarFB(){
-  function start(){
-    fbCheckConexao();
-    setTimeout(iniciarSyncFirebase, 2000);
-    // Verifica conexão a cada 30 segundos
-    setInterval(fbCheckConexao, 30000);
-    // Reconecta quando voltar online
-    window.addEventListener('online', function(){
-      fbCheckConexao();
-      if(_fbEventSource) fbOuvirTempReal();
-    });
-    window.addEventListener('offline', function(){
-      window.FB_ACTIVE = false;
-      if(typeof fbUpdateBadge==='function') fbUpdateBadge('offline');
-    });
-  }
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', function(){ setTimeout(start, 500); });
-  }else{
-    setTimeout(start, 500);
-  }
-})();
-
+setTimeout(iniciarSyncFirebase,3000);
 
 
 
@@ -8729,8 +8596,8 @@ function _ch(id, cfgFn, extraOpts, _retry){
 
 
 
-</script>
 
+</script>
 
 
 
@@ -10606,5 +10473,40 @@ Olá! Segue o acesso ao sistema de gerenciamento de manutenção da IDMóveis / 
     </div>
   </div>
 </div>
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import{getDatabase,ref,set,get,onValue}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+var C={apiKey:'AIzaSyC1IOdEKdQWwYs2TWHEweWU04VXtxJcPOo',authDomain:'sgcm-idmoveis.firebaseapp.com',databaseURL:'https://sgcm-idmoveis-default-rtdb.firebaseio.com',projectId:'sgcm-idmoveis',storageBucket:'sgcm-idmoveis.firebasestorage.app',messagingSenderId:'894927954150',appId:'1:894927954150:web:9d91018483a1b300cd1b27'};
+try{
+  var app=initializeApp(C),db=getDatabase(app);
+  onValue(ref(db,'.info/connected'),function(s){
+    window.FB_ACTIVE=!!s.val();
+    if(typeof fbUpdateBadge==='function')fbUpdateBadge(window.FB_ACTIVE?'online':'offline');
+    if(window.FB_ACTIVE)console.log('[SGCM] Firebase ONLINE');
+  });
+  window.fbEnviarDados=function(){
+    if(!window.FB_ACTIVE){if(typeof toast==='function')toast('Firebase offline','','dk');return;}
+    set(ref(db,'sgcm'),{os:window.OS||[],equip:window.EQUIP||[],prev:window.PREV||[],ts:Date.now()})
+    .then(function(){if(typeof toast==='function')toast('Sincronizado!','','ok');})
+    .catch(function(e){if(typeof toast==='function')toast('Erro:'+e.message,'','dk');});
+  };
+  window.fbPuxarDados=function(){
+    get(ref(db,'sgcm')).then(function(s){
+      var d=s.val();if(!d)return;
+      if(d.os&&Array.isArray(d.os)){window.OS=d.os;try{localStorage.setItem('sgcm_os',JSON.stringify(d.os));}catch(e){}}
+      if(d.equip&&Array.isArray(d.equip)){window.EQUIP=d.equip;try{localStorage.setItem('sgcm_equip',JSON.stringify(d.equip));}catch(e){}}
+      if(d.prev&&Array.isArray(d.prev)){window.PREV=d.prev;try{localStorage.setItem('sgcm_prev',JSON.stringify(d.prev));}catch(e){}}
+      if(typeof updateDots==='function')updateDots();
+      console.log('[SGCM] Dados Firebase carregados');
+    }).catch(function(e){console.warn('[SGCM] fbPuxar:',e.message);});
+  };
+  onValue(ref(db,'sgcm/os'),function(s){
+    var d=s.val();
+    if(d&&Array.isArray(d)&&window.FB_ACTIVE){window.OS=d;try{localStorage.setItem('sgcm_os',JSON.stringify(d));}catch(e){}if(typeof updateDots==='function')updateDots();}
+  });
+  if(typeof fbUpdateBadge==='function')fbUpdateBadge('conectando');
+  console.log('[SGCM] Firebase SDK modular OK');
+}catch(e){console.warn('[SGCM] Firebase erro:',e.message);if(typeof fbUpdateBadge==='function')fbUpdateBadge('offline');}
+</script>
 </body>
 </html>
